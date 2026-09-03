@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hi Ryah</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: system-ui, -apple-system, Segoe UI, sans-serif;
+      background: #0f1115;
+      color: #f4f4f5;
+    }
+    body {
+      display: grid;
+      place-items: center;
+      padding: 2rem 1.25rem;
+    }
+    main {
+      text-align: center;
+      max-width: 28rem;
+    }
+    h1 {
+      font-size: clamp(2.2rem, 8vw, 4.5rem);
+      font-weight: 600;
+      letter-spacing: -0.04em;
+      margin: 0 0 1.5rem;
+    }
+    .buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    button {
+      appearance: none;
+      border: 0;
+      cursor: pointer;
+      padding: 0.85rem 1.6rem;
+      background: #f4f4f5;
+      color: #0f1115;
+      font: inherit;
+      font-size: 1.05rem;
+      font-weight: 600;
+      border-radius: 999px;
+      max-width: 100%;
+    }
+    button:hover {
+      background: #d4d4d8;
+    }
+    button.secondary {
+      background: transparent;
+      color: #f4f4f5;
+      box-shadow: inset 0 0 0 2px #f4f4f5;
+    }
+    button.secondary:hover {
+      background: #1c1f26;
+    }
+    .hint {
+      margin: 1rem 0 0;
+      font-size: 0.85rem;
+      color: #a1a1aa;
+    }
+    .result {
+      margin-top: 2rem;
+    }
+    .result h2 {
+      font-size: clamp(1.8rem, 6vw, 3rem);
+      font-weight: 600;
+      letter-spacing: -0.03em;
+      margin: 0 0 1rem;
+    }
+    .result img {
+      width: min(100%, 22rem);
+      height: auto;
+      border-radius: 1rem;
+      display: block;
+      margin: 0 auto;
+    }
+    .screen { display: none; }
+    .screen.active { display: block; }
+  </style>
+</head>
+<body>
+  <main>
+    <section id="hello" class="screen active">
+      <h1>hi ryah</h1>
+      <div class="buttons">
+        <button type="button" id="start">click here</button>
+      </div>
+    </section>
+
+    <section id="love" class="screen">
+      <h1>I love you</h1>
+      <div class="buttons">
+        <button type="button" id="yes">Click here if you also love me</button>
+        <button type="button" class="secondary" id="no">click here if you dont love me</button>
+      </div>
+      <p class="hint">(try both)</p>
+      <div id="result" class="result" hidden></div>
+    </section>
+  </main>
+
+  <script>
+    const hello = document.getElementById("hello");
+    const love = document.getElementById("love");
+    const result = document.getElementById("result");
+
+    document.getElementById("start").addEventListener("click", function () {
+      hello.classList.remove("active");
+      love.classList.add("active");
+    });
+
+    document.getElementById("yes").addEventListener("click", function () {
+      result.hidden = false;
+      result.innerHTML = "<h2>yaaay!</h2>";
+    });
+
+    document.getElementById("no").addEventListener("click", function () {
+      result.hidden = false;
+      result.innerHTML =
+        '<h2>oh nooo</h2><img src="oh-no.jpg" alt="oh nooo">';
+    });
+  </script>
+</body>
+</html>
