@@ -129,7 +129,13 @@ function loadModels() {
   const loader = new THREE.GLTFLoader();
   const files = { male: 'models/readyplayer.me.glb', female: 'models/Michelle.glb', cop: 'models/Soldier.glb' };
   const el = document.getElementById('loading'); let done = 0;
-  const load = (k) => new Promise(res => loader.load(files[k], g => { done++; el.textContent = 'LOADING PEOPLE… ' + done + '/3'; res([k, g]); }, undefined, () => res([k, null])));
+  // Plain .glb first (repo / local server); base64 text copy as fallback for hosts that only serve text.
+  const bytes = async (url) => {
+    try { const r = await fetch(url); if (r.ok) { const ct = r.headers.get('content-type') || ''; if (!ct.includes('text/html')) return await r.arrayBuffer(); } } catch (e) { }
+    const r = await fetch(url + '.b64.txt'); if (!r.ok) throw new Error('missing ' + url);
+    const bin = atob((await r.text()).trim()); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer;
+  };
+  const load = (k) => bytes(files[k]).then(buf => new Promise((res, rej) => loader.parse(buf, '', res, rej))).then(g => { done++; el.textContent = 'LOADING PEOPLE… ' + done + '/3'; return [k, g]; }).catch(e => { console.warn(e); return [k, null]; });
   el.textContent = 'LOADING PEOPLE… 0/3';
   return Promise.all(Object.keys(files).map(load)).then(list => { const o = {}; for (const [k, g] of list) o[k] = g; return (o.male && o.female && o.cop) ? o : null; });
 }
