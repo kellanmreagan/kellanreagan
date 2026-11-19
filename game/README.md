@@ -21,7 +21,9 @@ then open http://localhost:8000.
 WASD move/drive · Mouse look · Shift sprint · Space jump/handbrake · RMB aim · LMB shoot · R reload · 1/2 weapons · F enter/exit car · T skip time · P graphics quality · Esc pause
 
 ## Credits
-Character models come from the three.js example assets (github.com/mrdoob/three.js, `examples/models/gltf`):
+- `heroine.glb` (the main character): Microsoft Rocketbox avatar `Female_Adult_03` (github.com/microsoft/Microsoft-Rocketbox), MIT License, converted from FBX to glTF with textures downscaled to 1024px. See `models/ROCKETBOX-LICENSE.txt`.
+
+The civilian and police models come from the three.js example assets (github.com/mrdoob/three.js, `examples/models/gltf`):
 - `Michelle.glb` and `Soldier.glb`: Mixamo characters and animations
 - `readyplayer.me.glb`: Ready Player Me avatar
 

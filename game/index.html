@@ -127,7 +127,7 @@ canvas#gl{position:fixed;inset:0;width:100%;height:100%;display:block}
 // Load rigged human models (Mixamo / Ready Player Me, via the three.js example assets) before the game boots.
 function loadModels() {
   const loader = new THREE.GLTFLoader();
-  const files = { male: 'models/readyplayer.me.glb', female: 'models/Michelle.glb', cop: 'models/Soldier.glb' };
+  const files = { hero: 'models/heroine.glb', male: 'models/readyplayer.me.glb', female: 'models/Michelle.glb', cop: 'models/Soldier.glb' };
   const el = document.getElementById('loading'); let done = 0;
   // Plain .glb first (repo / local server); base64 text copy as fallback for hosts that only serve text.
   const bytes = async (url) => {
@@ -135,9 +135,9 @@ function loadModels() {
     const r = await fetch(url + '.b64.txt'); if (!r.ok) throw new Error('missing ' + url);
     const bin = atob((await r.text()).trim()); const u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u.buffer;
   };
-  const load = (k) => bytes(files[k]).then(buf => new Promise((res, rej) => loader.parse(buf, '', res, rej))).then(g => { done++; el.textContent = 'LOADING PEOPLE… ' + done + '/3'; return [k, g]; }).catch(e => { console.warn(e); return [k, null]; });
-  el.textContent = 'LOADING PEOPLE… 0/3';
-  return Promise.all(Object.keys(files).map(load)).then(list => { const o = {}; for (const [k, g] of list) o[k] = g; return (o.male && o.female && o.cop) ? o : null; });
+  const load = (k) => bytes(files[k]).then(buf => new Promise((res, rej) => loader.parse(buf, '', res, rej))).then(g => { done++; el.textContent = 'LOADING PEOPLE… ' + done + '/4'; return [k, g]; }).catch(e => { console.warn(e); return [k, null]; });
+  el.textContent = 'LOADING PEOPLE… 0/4';
+  return Promise.all(Object.keys(files).map(load)).then(list => { const o = {}; for (const [k, g] of list) o[k] = g; return (o.hero && o.male && o.female && o.cop) ? o : null; });
 }
 loadModels().then(MODELS => {
 const V3 = THREE.Vector3, $ = id => document.getElementById(id);
@@ -744,32 +744,50 @@ function rayCar(o, d, car, maxT) {
 // ---------- Peds ----------
 // ---------- Realistic rigged humans ----------
 let CLIPS = null; const RIG = {};
+// Canonical bone names: Mixamo ("mixamorigLeftArm"), Ready Player Me ("LeftArm") and 3ds Max Biped ("Bip01_L_UpperArm") all map to one set.
+const BIPED = { Pelvis: 'Hips', Spine: 'Spine', Spine1: 'Spine1', Spine2: 'Spine2', Neck: 'Neck', Head: 'Head', Clavicle: 'Shoulder', UpperArm: 'Arm', Forearm: 'ForeArm', Hand: 'Hand', Thigh: 'UpLeg', Calf: 'Leg', Foot: 'Foot', Toe0: 'ToeBase',
+  Finger0: 'HandThumb1', Finger01: 'HandThumb2', Finger02: 'HandThumb3', Finger1: 'HandIndex1', Finger11: 'HandIndex2', Finger12: 'HandIndex3', Finger2: 'HandMiddle1', Finger21: 'HandMiddle2', Finger22: 'HandMiddle3',
+  Finger3: 'HandRing1', Finger31: 'HandRing2', Finger32: 'HandRing3', Finger4: 'HandPinky1', Finger41: 'HandPinky2', Finger42: 'HandPinky3' };
+function canon(name) {
+  const n = name.replace(/^mixamorig:?/, '');
+  const m = n.match(/^Bip01[_ ](?:([LR])[_ ])?(.+)$/);
+  if (!m) return n;
+  const base = BIPED[m[2]]; if (!base) return 'x_' + n;
+  return m[1] ? (m[1] === 'L' ? 'Left' : 'Right') + base : base;
+}
 // Rig analysis: bones by canonical name (prefix stripped), rest world rotations, facing, height from bones.
 function rigInfo(scene) {
   const sc = THREE.SkeletonUtils.clone(scene); sc.updateMatrixWorld(true);
-  const bones = {}; sc.traverse(o => { if (o.isBone) bones[o.name.replace('mixamorig', '')] = o; });
+  const bones = {}; sc.traverse(o => { if (o.isBone) bones[canon(o.name)] = o; });
   const rest = {}; for (const k in bones) rest[k] = bones[k].getWorldQuaternion(new THREE.Quaternion());
   const wp = k => bones[k].getWorldPosition(new V3());
   const f = wp('LeftToeBase').sub(wp('LeftFoot')).setY(0).normalize();
   let minY = 1e9, maxY = -1e9; for (const k in bones) { const y = wp(k).y; minY = Math.min(minY, y); maxY = Math.max(maxY, y); }
-  return { sc, bones, rest, facing: f, minY, maxY };
+  const pos = {}; for (const k in bones) pos[k] = wp(k);
+  return { sc, bones, rest, pos, facing: f, minY, maxY };
 }
 // Bake a world-space retarget of a clip from the source rig onto the target rig.
 function retarget(src, tgt, clip) {
   const mixer = new THREE.AnimationMixer(src.sc); const act = mixer.clipAction(clip); act.play();
   const F = new THREE.Quaternion().setFromUnitVectors(src.facing, tgt.facing), Fi = F.clone().invert();
   const order = []; tgt.sc.traverse(o => { if (o.isBone) order.push(o); });
+  // align rest poses limb by limb (A-pose vs T-pose): C rotates each target limb's rest direction onto the source's
+  const CH = {}; for (const s of ['Left', 'Right']) Object.assign(CH, { [s + 'Shoulder']: s + 'Arm', [s + 'Arm']: s + 'ForeArm', [s + 'ForeArm']: s + 'Hand', [s + 'Hand']: s + 'HandMiddle1', [s + 'UpLeg']: s + 'Leg', [s + 'Leg']: s + 'Foot', [s + 'Foot']: s + 'ToeBase' });
+  const corr = {};
+  for (const k in CH) { const c = CH[k]; if (!src.pos[k] || !src.pos[c] || !tgt.pos[k] || !tgt.pos[c]) continue;
+    const dS = src.pos[c].clone().sub(src.pos[k]).normalize().applyQuaternion(F), dT = tgt.pos[c].clone().sub(tgt.pos[k]).normalize();
+    corr[k] = new THREE.Quaternion().setFromUnitVectors(dT, dS); }
   const fps = 30, n = Math.max(2, Math.ceil(clip.duration * fps) + 1), times = new Float32Array(n);
   const data = new Map(order.map(b => [b, new Float32Array(n * 4)]));
   const ws = new THREE.Quaternion(), d = new THREE.Quaternion(), pw = new THREE.Quaternion();
   for (let i = 0; i < n; i++) {
     const t = Math.min(clip.duration, i / fps); times[i] = t; mixer.setTime(t); src.sc.updateMatrixWorld(true);
     for (const b of order) {
-      const k = b.name.replace('mixamorig', ''), sb = src.bones[k];
+      const k = canon(b.name), sb = src.bones[k];
       if (sb && src.rest[k]) {
         sb.getWorldQuaternion(ws);
         d.copy(ws).multiply(src.rest[k].clone().invert()); d.premultiply(F).multiply(Fi);
-        const wt = d.multiply(tgt.rest[k]);
+        const wt = d.multiply(corr[k] ? corr[k].clone().multiply(tgt.rest[k]) : tgt.rest[k]);
         b.parent.getWorldQuaternion(pw); b.quaternion.copy(pw.invert().multiply(wt)); b.updateMatrixWorld(true);
       }
       b.quaternion.toArray(data.get(b), i * 4);
@@ -783,7 +801,7 @@ if (MODELS) {
   const src = MODELS.cop.animations, get = n => src.find(a => a.name === n);
   const strip = c => { const k = c.clone(); k.tracks = k.tracks.filter(t => !t.name.endsWith('.position')); return k; };
   CLIPS = { cop: { idle: strip(get('Idle')), walk: strip(get('Walk')), run: strip(get('Run')) } };
-  for (const k of ['male', 'female']) CLIPS[k] = { idle: retarget(RIG.cop, RIG[k], get('Idle')), walk: retarget(RIG.cop, RIG[k], get('Walk')), run: retarget(RIG.cop, RIG[k], get('Run')) };
+  for (const k of ['hero', 'male', 'female']) CLIPS[k] = { idle: retarget(RIG.cop, RIG[k], get('Idle')), walk: retarget(RIG.cop, RIG[k], get('Walk')), run: retarget(RIG.cop, RIG[k], get('Run')) };
   for (const k in MODELS) MODELS[k].scene.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; if (m.material) { m.material.envMapIntensity = .7; if (m.material.map) m.material.map.anisotropy = 4; } } });
 }
 const _v = new V3(), _v2 = new V3(), _q = new THREE.Quaternion(), _q2 = new THREE.Quaternion(), _look = new THREE.Object3D();
@@ -800,11 +818,11 @@ function pointBone(bone, child, worldTarget) {
 const OUTFITS = [0x2b3a55, 0xb23a3a, 0xe8e2d4, 0x3d6b4f, 0x333333, 0xd88b3a, 0x6a4b8c, 0x86a8c8, 0xc8b28a, 0xffffff];
 function makeHuman(o = {}) {
   if (!MODELS) return makeProcHuman(o);
-  const kind = o.cop ? 'cop' : o.player ? 'female' : (R() < .45 ? 'female' : 'male');
+  const kind = o.cop ? 'cop' : o.player ? 'hero' : (R() < .45 ? 'female' : 'male');
   const g = MODELS[kind];
   const model = THREE.SkeletonUtils.clone(g.scene);
-  const height = o.player ? 1.7 : kind === 'female' ? rr(1.6, 1.7) : rr(1.74, 1.86);
-  const rig = RIG[kind]; const sc = height / ((rig.maxY - rig.minY) * 1.02);
+  const height = o.player ? 1.68 : kind === 'female' ? rr(1.6, 1.7) : rr(1.74, 1.86);
+  const rig = RIG[kind]; const sc = height / ((rig.maxY - rig.minY) * (kind === 'hero' ? 1.1 : 1.02));
   const holder = new THREE.Group(); holder.add(model); holder.scale.setScalar(sc); holder.position.y = -rig.minY * sc;
   holder.rotation.y = Math.atan2(rig.facing.x, rig.facing.z) * -1; // face +Z
   const root = new THREE.Group(); root.add(holder);
@@ -815,8 +833,8 @@ function makeHuman(o = {}) {
     if (kind === 'male' && /Beard/.test(n) && R() < .4) m.visible = false;
     if (kind === 'female') { m.material = m.material.clone(); m.material.color.setHSL(R(), rr(0, .25), rr(.75, 1)); }
   } });
-  const pre = kind === 'male' ? '' : 'mixamorig';
-  const bone = n => model.getObjectByName(pre + n);
+  const bmap = {}; model.traverse(b => { if (b.isBone) bmap[canon(b.name)] = b; });
+  const bone = n => bmap[n];
   const B = { rArm: bone('RightArm'), rFore: bone('RightForeArm'), rHand: bone('RightHand'), lArm: bone('LeftArm'), lFore: bone('LeftForeArm'), lHand: bone('LeftHand'), spine: bone('Spine2'), head: bone('Head'), hips: bone('Hips') };
   const mixer = new THREE.AnimationMixer(model);
   const set = CLIPS[kind];
